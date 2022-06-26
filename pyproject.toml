@@ -8,6 +8,7 @@ authors = ["Jason Dunn <William.Dunn@Quasarke.com>"]
 python = ">=3.9,<3.11"
 pydantic = "^1.9.1"
 python-telegram-bot = {version = "*", allow-prereleases = true}
+python-dotenv = "^0.20.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"

@@ -122,7 +122,7 @@ def cancel(update: Update, context: CallbackContext) -> int:
 def main():
     settings = Settings(_env_file="config/.env")
      # Create the Updater and pass it your bot's token.
-    updater = Updater("TOKEN")
+    updater = Updater(settings.telegram_key)
 
     # Get the dispatcher to register handlers
     dispatcher = updater.dispatcher
