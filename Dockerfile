@@ -1,5 +1,6 @@
 FROM python:3.10.5-bullseye
 RUN mkdir /app 
+COPY ./config/ /app/config/
 COPY main.py /app
 COPY pyproject.toml /app 
 WORKDIR /app
