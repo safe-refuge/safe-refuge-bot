@@ -9,4 +9,4 @@ RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev
 
 
-ENTRYPOINT [ "poetry run python main.py" ] 
+ENTRYPOINT [ "poetry", "run", "python", "main.py" ] 
