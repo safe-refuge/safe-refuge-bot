@@ -6,11 +6,10 @@ from telegram.ext import (
     Updater,
     CommandHandler,
     MessageHandler,
-    Filters,
     ConversationHandler,
     CallbackContext,
 )
-
+from telegram.ext import Filters
 # Enable logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
