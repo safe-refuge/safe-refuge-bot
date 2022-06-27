@@ -4,8 +4,8 @@ COPY main.py /app
 COPY pyproject.toml /app 
 WORKDIR /app
 ENV PYTHONPATH=${PYTHONPATH}:${PWD} 
-RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
-RUN poetry --version
+RUN apk add --update py3-pip
+RUN pip3 install poetry
 RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev
 
