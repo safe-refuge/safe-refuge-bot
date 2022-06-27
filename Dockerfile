@@ -5,7 +5,7 @@ COPY pyproject.toml /app
 WORKDIR /app
 ENV PYTHONPATH=${PYTHONPATH}:${PWD} 
 RUN apk add --update py3-pip
-RUN pip3 install poetry
+RUN pip install poetry
 RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev
 
