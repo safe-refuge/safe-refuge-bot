@@ -1,11 +1,10 @@
-FROM python:3.10.5-alpine3.16
+FROM python:3.10.5-bullseye
 RUN mkdir /app 
 COPY main.py /app
 COPY pyproject.toml /app 
 WORKDIR /app
 ENV PYTHONPATH=${PYTHONPATH}:${PWD} 
-RUN apk add --update py3-pip
-RUN pip install poetry
+RUN pip3 install poetry
 RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev
 
