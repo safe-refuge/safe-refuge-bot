@@ -3,6 +3,7 @@ RUN mkdir /app
 COPY ./config/ /app/config/
 COPY main.py /app
 COPY pyproject.toml /app 
+COPY ./src/ /app/src/
 WORKDIR /app
 ENV PYTHONPATH=${PYTHONPATH}:${PWD} 
 RUN pip3 install poetry
