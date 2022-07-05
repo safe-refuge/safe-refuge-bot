@@ -1,11 +1,10 @@
 import logging
 
-from requests import request
 from config.settings import Settings
 from telegram.ext import Updater
 
-from src.handlers.nearby_handler import get_nearby_handler
-from src.handlers.start_handler import get_start_handler
+from src.conversations.search_conversation import get_search_handler
+from src.conversations.start_conversation import get_start_handler
 
 # Enable logging
 logging.basicConfig(
@@ -22,12 +21,9 @@ def main():
     # Get the dispatcher to register handlers
     dispatcher = updater.dispatcher
 
-    start_handler = get_start_handler()
-    nearby_handler = get_nearby_handler(    )
-
     # Add handlers to the dispatcher
-    dispatcher.add_handler(start_handler)
-    dispatcher.add_handler(nearby_handler)
+    dispatcher.add_handler(get_start_handler())
+    dispatcher.add_handler(get_search_handler())
 
     # Start the Bot
     updater.start_polling()
