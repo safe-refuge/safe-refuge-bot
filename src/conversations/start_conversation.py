@@ -1,6 +1,5 @@
 import logging
 
-from requests import request
 from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.ext import (
     CommandHandler,
@@ -110,8 +109,8 @@ def bio(update: Update, context: CallbackContext) -> int:
 
 def cancel(update: Update, context: CallbackContext) -> int:
     """Cancels and ends the conversation."""
-    user = update.message.from_user
-    logger.info("User %s canceled the conversation.", user.first_name)
+    user = update.message
+    logger.info("User %s canceled the conversation.", user.from_user.first_name)
     
     update.message.reply_text(
         'Bye! I hope we can talk again some day.', reply_markup=ReplyKeyboardRemove()
@@ -123,7 +122,7 @@ def cancel(update: Update, context: CallbackContext) -> int:
 def get_start_handler():
     """Returning an handler of the start conversation"""
 
-    start_conv_handler = ConversationHandler(
+    return ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
             GENDER: [MessageHandler(Filters.regex('^(Boy|Girl|Other)$'), gender)],
@@ -136,5 +135,3 @@ def get_start_handler():
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
-
-    return start_conv_handler
