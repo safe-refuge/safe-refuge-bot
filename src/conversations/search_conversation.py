@@ -22,6 +22,7 @@ categories_keyboard = [get_category_list()]
 yes_no_keyboard =[['Yes', 'No']]
 
 # Holding all the user-selected interests
+# TODO: Check for collisions
 user_categories_choice = {}
 
 def nearby(update: Update, context: CallbackContext) -> int:
@@ -48,9 +49,10 @@ def info(update: Update, context: CallbackContext) -> int:
     user_categories_choice[update.message.text] = update.message.text
     
     logger.info(f'{user.first_name} Point of intrest are: {update.message.text}')
-
+    
+    # TODO: If the user do not wants to add categories, send all!
     update.message.reply_text(
-        'There is another point of interest are you looking for?',
+        'There is another category of interest are you looking for?',
         reply_markup=ReplyKeyboardMarkup(
             yes_no_keyboard,
             one_time_keyboard=True,
@@ -69,7 +71,8 @@ def add_point_of_inerest(update: Update, context: CallbackContext) -> int:
     user = update.message.from_user
     user_answer = update.message.text
 
-    if user_answer == 'No' or user_answer == 'no':
+    # TODO: add .lower()
+    if user_answer.lower() in ['No', 'no']:
         categories_choice_len = len(user_categories_choice)
         logger.info(f'User {user.first_name} interests in this {categories_choice_len} categories: {user_categories_choice.values()}')
 
@@ -80,9 +83,9 @@ def add_point_of_inerest(update: Update, context: CallbackContext) -> int:
 
         return LOCATION
 
-    elif user_answer == 'Yes' or user_answer == 'yes':
+    elif user_answer.lower() in ['Yes', 'yes']:
         update.message.reply_text(
-            'OK, select another option.',
+            'OK, select another category.',
             reply_markup=ReplyKeyboardMarkup(
                 categories_keyboard,
                 one_time_keyboard=True,
@@ -117,11 +120,7 @@ def location(update: Update, context: CallbackContext) -> int:
     # TODO: get the location automatically
     logger.info(f'Location of { user.first_name}: {user_location.latitude} / {user_location.longitude}')
 
-    points = get_points_of_interest(chat_id=update.message.chat_id, skip=0, limit=20, latitude=user_location.latitude,
-        longitude=user_location.longitude, min_distance=0, max_distance=500000, categories=user_categories_choice.values(), organizations=None,
-        city=None, country=None, approved=None, active=None, author=None, admin=None, add_distance=True, fields="basic")
-
-    if points:
+    if points := get_points_of_interest(chat_id=update.message.chat_id, skip=0, limit=20, latitude=user_location.latitude, longitude=user_location.longitude, min_distance=0, max_distance=500000, categories=user_categories_choice.values(), organizations=None, city=None, country=None, approved=None, active=None, author=None, admin=None, add_distance=True, fields="basic"):
         update.message.reply_text(f'Here are the points of interest near you:\n')
         for name, location in points.items(): 
             update.message.reply_text(f'{name}:\n')
@@ -129,7 +128,7 @@ def location(update: Update, context: CallbackContext) -> int:
 
         # TODO: Handle the end of the conversation - Yet not working!!!
         return DONE
-    
+
     update.message.reply_text(
         f'Sorry, I could not find any points of interest near you. Maybe you want to look for another points of interest?',
         reply_markup=ReplyKeyboardMarkup(
@@ -157,7 +156,7 @@ def skip_location(update: Update, context: CallbackContext) -> int:
 
 def end_of_conversation(update: Update, context: CallbackContext):
     """Ends the conversation."""
-    logger.info(f'The user ends the conversation.')
+    logger.info('The user ends the conversation.')
     
     update.message.reply_text(
         'I hope this information will be helpful for you. I will be here if you need me ☻',
@@ -184,7 +183,7 @@ def get_search_handler():
     """Returns the handler for the nearby conversation."""
 
     return ConversationHandler(
-        entry_points=[CommandHandler('start', nearby)],
+        entry_points=[CommandHandler('nearby', nearby)],
         states={
             INFO: [MessageHandler(Filters.text, info)],
             ADDITEMS: [MessageHandler(Filters.text, add_point_of_inerest)],            
