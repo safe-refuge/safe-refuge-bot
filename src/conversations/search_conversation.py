@@ -184,7 +184,7 @@ def get_search_handler():
     """Returns the handler for the nearby conversation."""
 
     return ConversationHandler(
-        entry_points=[CommandHandler('nearby', nearby)],
+        entry_points=[CommandHandler('start', nearby)],
         states={
             INFO: [MessageHandler(Filters.text, info)],
             ADDITEMS: [MessageHandler(Filters.text, add_point_of_inerest)],            

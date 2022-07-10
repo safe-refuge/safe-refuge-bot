@@ -4,7 +4,7 @@ from config.settings import Settings
 from telegram.ext import Updater
 
 from src.conversations.search_conversation import get_search_handler
-from src.conversations.start_conversation import get_start_handler
+# from src.conversations.start_conversation import get_start_handler
 
 # Enable logging
 logging.basicConfig(
@@ -22,7 +22,7 @@ def main():
     dispatcher = updater.dispatcher
 
     # Add handlers to the dispatcher
-    dispatcher.add_handler(get_start_handler())
+    # dispatcher.add_handler(get_start_handler())
     dispatcher.add_handler(get_search_handler())
 
     # Start the Bot
