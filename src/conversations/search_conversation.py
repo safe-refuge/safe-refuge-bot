@@ -1,6 +1,8 @@
+from cgitb import text
+from email import message
 import logging
 
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, KeyboardButton
 from telegram.ext import (
     CommandHandler,
     MessageHandler,
@@ -11,6 +13,7 @@ from telegram.ext import (
 
 from src.safe_refuge_calls.common import get_category_list
 from src.safe_refuge_calls.points_of_interest import get_points_of_interest
+from src.safe_refuge_calls.geocode import get_geocode
 
 
 logger = logging.getLogger(__name__)
@@ -20,6 +23,7 @@ LOCATION, INFO, GET_POINTS, ADDITEMS, DONE = range(5)
 # Holding all user possible interests
 categories_keyboard = [get_category_list()]
 yes_no_keyboard =[['Yes', 'No']]
+location_keyboard = [[KeyboardButton("send", request_location=True)], [KeyboardButton("/skip")]]
 
 # Holding all the user-selected interests
 user_categories_choice = {}
@@ -47,7 +51,7 @@ def info(update: Update, context: CallbackContext) -> int:
     user = update.message.from_user
     user_categories_choice[update.message.text] = update.message.text
     
-    logger.info(f'{user.first_name} Point of intrest are: {update.message.text}')
+    logger.info(f'{user.first_name} Point of interest are: {update.message.text}')
 
     update.message.reply_text(
         'There is another point of interest are you looking for?',
@@ -62,7 +66,7 @@ def info(update: Update, context: CallbackContext) -> int:
     return ADDITEMS
 
 
-def add_point_of_inerest(update: Update, context: CallbackContext) -> int:
+def add_point_of_interest(update: Update, context: CallbackContext) -> int:
     """
     Recheck the user's points of interest.
     """
@@ -74,8 +78,13 @@ def add_point_of_inerest(update: Update, context: CallbackContext) -> int:
         logger.info(f'User {user.first_name} interests in this {categories_choice_len} categories: {user_categories_choice.values()}')
 
         update.message.reply_text(
-        'OK! For helping you find your way, I need you to share your location please.',
-        reply_markup=ReplyKeyboardRemove() 
+        'We need your location to provide the closest available assistance for your needs. If you see the prompt, please click "Allow" or alternatively you can press skip and manually enter your address',
+        reply_markup=ReplyKeyboardMarkup(
+                location_keyboard,
+                one_time_keyboard=True,
+                input_field_placholder="Please choose:",
+            )     
+        
         )
 
         return LOCATION
@@ -110,11 +119,14 @@ def add_point_of_inerest(update: Update, context: CallbackContext) -> int:
 
 
 def location(update: Update, context: CallbackContext) -> int:
-    """Stores the location and asks for some info about the user."""
+    """Stores the location and looks for POIs (ONLY if user sent location)"""
+    
     user = update.message.from_user
     user_location = update.message.location
 
     # TODO: get the location automatically
+
+    
     logger.info(f'Location of { user.first_name}: {user_location.latitude} / {user_location.longitude}')
 
     points = get_points_of_interest(chat_id=update.message.chat_id, skip=0, limit=20, latitude=user_location.latitude,
@@ -149,11 +161,59 @@ def skip_location(update: Update, context: CallbackContext) -> int:
     logger.info(f'User {user.first_name} did not send a location.')
     
     update.message.reply_text(
-        'You seem a bit paranoid! At last, tell me something about yourself.'
+        'You seem a bit paranoid! At least, type in an address close to you.',
+         reply_markup=ReplyKeyboardRemove()
     )
 
     return GET_POINTS
 
+def get_points(update: Update, context: CallbackContext) -> int:
+    """Uses geolocation to turn the address into coordinates"""
+    user = update.message.from_user
+    user_address = update.message.text
+    logger.info(f'User {user.first_name} sent {user_address} as an address close to them.')
+
+    result = get_geocode(user_address)
+
+    if result == []:
+        update.message.reply_text(
+            f'Sorry, I could not recognise that address. Maybe retype the address?',
+            reply_markup=ReplyKeyboardRemove()
+            )
+            
+        return GET_POINTS
+
+    else:
+        update.message.reply_text(
+            f'You have inputted {result[0]} as your address. Looking for points of interest...',
+            reply_markup=ReplyKeyboardRemove()
+            )
+
+        lat, lng = result[1]["lat"], result[1]["lng"]
+        points = get_points_of_interest(chat_id=update.message.chat_id, skip=0, limit=20, latitude=lat,
+            longitude=lng, min_distance=0, max_distance=500000, categories=user_categories_choice.values(), organizations=None,
+            city=None, country=None, approved=None, active=None, author=None, admin=None, add_distance=True, fields="basic")
+
+        if points:
+            update.message.reply_text(f'Here are the points of interest near you:\n')
+            for name, location in points.items(): 
+                update.message.reply_text(f'{name}:\n')
+                update.message.reply_location(location=location)    
+
+            # TODO: Handle the end of the conversation - Yet not working!!!
+            return DONE
+    
+        update.message.reply_text(
+            f'Sorry, I could not find any points of interest near you. Maybe you want to look for another points of interest?',
+            reply_markup=ReplyKeyboardMarkup(
+                    yes_no_keyboard,
+                    one_time_keyboard=True,
+                    input_field_placeholder="Please choose:",
+                    resize_keyboard=True
+                )
+            )
+
+        return ADDITEMS
 
 def end_of_conversation(update: Update, context: CallbackContext):
     """Ends the conversation."""
@@ -187,11 +247,12 @@ def get_search_handler():
         entry_points=[CommandHandler('start', nearby)],
         states={
             INFO: [MessageHandler(Filters.text, info)],
-            ADDITEMS: [MessageHandler(Filters.text, add_point_of_inerest)],            
+            ADDITEMS: [MessageHandler(Filters.text, add_point_of_interest)],            
             LOCATION: [
                 MessageHandler(Filters.location, location),
                 CommandHandler('skip', skip_location)
             ],
+            GET_POINTS: [MessageHandler(Filters.text, get_points)],
             DONE: [MessageHandler(Filters.text, end_of_conversation)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
