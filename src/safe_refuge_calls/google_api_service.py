@@ -9,6 +9,6 @@ class GoogleAPI:
  
     def __init__(self):
 
-        api_key = "AIzaSyAouHHZ8x9dD1SasZgHKjJva2oYrNEuY1w" #This is my key
+        api_key = "SECRET"
         self.api = Client(api_key)
         logger.info(f"Connected to Google API")
