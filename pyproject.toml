@@ -10,7 +10,7 @@ pydantic = "^1.9.1"
 python-telegram-bot = "^13.12"
 python-dotenv = "^0.20.0"
 requests = "^2.28.1"
-
+googlemaps = "^4.6.0"
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
 
