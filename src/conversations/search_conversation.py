@@ -1,5 +1,3 @@
-from cgitb import text
-from email import message
 import logging
 
 from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, KeyboardButton
