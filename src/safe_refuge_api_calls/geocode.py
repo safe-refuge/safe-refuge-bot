@@ -1,10 +1,11 @@
 import logging
-from src.safe_refuge_calls.google_api_service import GoogleAPI
+from src.services.google_api_service import GoogleAPI
 
 logger = logging.getLogger(__name__)
 
 gmaps = GoogleAPI()
 
+# TODO: Refactoring needed - change to be service class
 def get_geocode(address):
     """Gets a geocode from the Google API based on address"""
 
