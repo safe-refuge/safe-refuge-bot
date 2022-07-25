@@ -3,8 +3,9 @@ import logging
 from config.settings import Settings
 from telegram.ext import Updater
 
-from src.conversations.search_conversation import get_search_handler
-# from src.conversations.start_conversation import get_start_handler
+from src.conversations.search_conversation import get_search_conv_handler
+from src.conversations.start_conversation_exam import get_start_conv_handler
+from src.conversations.nestedconversationbot import get_nested_conv
 
 # Enable logging
 logging.basicConfig(
@@ -15,15 +16,15 @@ logging.basicConfig(
 def main():
     settings = Settings(_env_file="config/.env")
     
-     # Create the Updater and pass it your bot's token.
+    # Create the Updater and pass it your bot's token.
     updater = Updater(settings.telegram_key)
 
     # Get the dispatcher to register handlers
     dispatcher = updater.dispatcher
 
     # Add handlers to the dispatcher
-    # dispatcher.add_handler(get_start_handler())
-    dispatcher.add_handler(get_search_handler())
+    dispatcher.add_handler(get_start_conv_handler())
+    dispatcher.add_handler(get_search_conv_handler())
 
     # Start the Bot
     updater.start_polling()

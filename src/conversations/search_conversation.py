@@ -1,6 +1,6 @@
 import logging
 
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, KeyboardButton
+from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.ext import (
     CommandHandler,
     MessageHandler,
@@ -9,50 +9,206 @@ from telegram.ext import (
     Filters
 )
 
-from src.safe_refuge_calls.common import get_category_list
-from src.safe_refuge_calls.points_of_interest import get_points_of_interest
-from src.safe_refuge_calls.geocode import get_geocode
-
+from src.services.safe_refuge_api_service import SafeRefugeApiService
+from src.safe_refuge_api_calls.geocode import get_geocode
+from src.services.keyboards_service import KeyboardService
 
 logger = logging.getLogger(__name__)
+LOCATION, CHECK_INFO, GET_POINTS, ADD_CATEGORY, DONE = range(5)
 
-LOCATION, INFO, GET_POINTS, ADDITEMS, DONE = range(5)
 
-# Holding all user possible interests
-categories_keyboard = [get_category_list()]
-yes_no_keyboard =[['Yes', 'No']]
-location_keyboard = [[KeyboardButton("send", request_location=True)], [KeyboardButton("/skip")]]
+# Dynamic keyboards:
+categories_keyboard = None
 
-# Holding all the user-selected interests
-user_categories_choice = {}
+# Fixed keyboards:
+yes_no_keyboard = KeyboardService.get_yes_no_keyboard()
+location_keyboard = KeyboardService.get_location_keyboard()
+search_keyboard = [['/search']]
 
-def nearby(update: Update, context: CallbackContext) -> int:
-    """Starts the conversation and asks the user about their needs."""
-    user = update.message.from_user
-    user_categories_choice = {} # reset the user categories choice
-    logger.info(f'User {user.first_name} started the conversation.')
+# TODO: Check for collisions in parallel requests
+user_categories_choice = None # Holding all the user-selected interests
+
+# Helper functions (for clarity):
+def invalid_category_selected_msg(update) -> None:
+    """
+    Invalid category selected.
+    Updates the user to select another category.
+
+    Args:
+        update: The update object.
+    """
+    update.message.reply_text(
+        'It looks like you choose an invalid category. Please, choose one of the available categories.',
+        reply_markup=ReplyKeyboardMarkup(
+            categories_keyboard,
+            one_time_keyboard=True,
+            input_field_placeholder="Please choose:",
+            resize_keyboard=True
+        )
+    )
+
+def all_categories_selected_msg(update) -> None:
+    """
+    Checks if the user has selected all the categories.
+    """
+    update.message.reply_text(
+        'You have selected all the categories.\nNow we need your location to provide the closest available assistance for your needs. If you see the prompt, please click "Allow" or alternatively you can press skip and manually enter your address',
+        reply_markup=ReplyKeyboardMarkup(
+            location_keyboard,
+            one_time_keyboard=True,
+            input_field_placholder="Please choose:",
+            resize_keyboard=True
+        )     
+    
+    )
+
+def ask_for_location(update, user) -> None | int:
+    """
+    Asks the user to send their location.
+    """
+    categories_choice_len = len(user_categories_choice)
+    logger.info(f'User {user.first_name} interests in this {categories_choice_len} categories: {list(user_categories_choice.keys())}')
+
+    # Checks if the user already shared his location
+    if update.message.location:
+        return DONE
 
     update.message.reply_text(
-        'Hi! What kind of point of interest are you looking for? Please, select the appropriate option so that I can give you more accurate information.',
+        'We need your location to provide the closest available assistance for your needs. If you see the prompt, please click "Allow" or alternatively you can press skip and manually enter your address',
+        reply_markup=ReplyKeyboardMarkup(
+            location_keyboard,
+            one_time_keyboard=True,
+            input_field_placholder="Please choose:",
+            resize_keyboard=True
+        )     
+    
+    )
+
+def cant_find_POI_msg(update) -> None:
+    """
+    Can't find the point of interest message.
+    """
+    update.message.reply_text(
+        'Sorry, I could not find any points of interest near you. Maybe you want to look for another points of interest?',
+        reply_markup=ReplyKeyboardMarkup(
+            yes_no_keyboard,
+            one_time_keyboard=True,
+            input_field_placeholder="Please choose:",
+            resize_keyboard=True
+        )
+    )
+
+def ask_for_more_info(update) -> None:
+    """
+    Checks if the user has selected yes.
+    """
+    update.message.reply_text(
+            'OK, select another category.',
+            reply_markup=ReplyKeyboardMarkup(
+                categories_keyboard,
+                one_time_keyboard=True,
+                input_field_placeholder="Please choose:",
+                resize_keyboard=True
+            )
+        )
+
+def would_you_search_again_msg(update) -> None:
+    """
+    Checks if the user wants to search again.
+    """
+    update.message.reply_text(
+        'Would you like to start a new search?', 
+        reply_markup=ReplyKeyboardMarkup(
+            yes_no_keyboard,
+            one_time_keyboard=True,
+            input_field_placeholder="Please choose:",
+            resize_keyboard=True
+        )
+    )
+
+def invalid_answer_msg(update, keyboard_type, extra_text = "") -> None:
+    """
+    Invalid answer - will return a clarification message to the user
+    """
+    update.message.reply_text(
+        f'Sorry, I did not understand your answer.\
+        Please follow the instructions:\n\
+        {extra_text}',
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard_type,
+            one_time_keyboard=True,
+            input_field_placeholder="please click:",
+            resize_keyboard=True
+        )
+    )
+
+def send_locations_to_user(update, points) -> None:
+    """
+    Sends the user the nearest available points of interest.
+    """
+    update.message.reply_text(
+            'Here are the nearest points of interest:\n', 
+            quote=True,  
+            reply_markup=ReplyKeyboardRemove()
+        )
+
+    for name, location in points.items():
+        update.message.reply_text(f'{name}:\n')
+        update.message.reply_location(location=location, reply_markup=ReplyKeyboardRemove())   
+
+
+# Conversation functions:
+def search(update: Update, context: CallbackContext) -> int:
+    """Starts the conversation and asks the user about their needs."""
+    user = update.message.from_user
+    logger.info(f'User {user.first_name} started the conversation.')
+
+    global categories_keyboard
+    global user_categories_choice
+    categories_keyboard = KeyboardService.get_categories_keyboard()
+    # inline_categories_keyboard = keyboard_service.get_categories_inline_keyboard()
+    user_categories_choice = {} # reset the user categories choice
+
+    update.message.reply_text(
+        'Hi! What kind of point of interest are you looking for?\nPlease, select the appropriate option so that I can give you more accurate information.',
         reply_markup=ReplyKeyboardMarkup(
             categories_keyboard,
             one_time_keyboard=True,
             input_field_placeholder="Category:",
+            resize_keyboard=True
             )
+        # reply_markup=inline_categories_keyboard
     )
 
-    return INFO
+    return CHECK_INFO
 
-
-def info(update: Update, context: CallbackContext) -> int:
+def check_info(update: Update, context: CallbackContext) -> int:
     """Stores the info about the user and ends the conversation."""
     user = update.message.from_user
-    user_categories_choice[update.message.text] = update.message.text
-    
+    user_answer = update.message.text
     logger.info(f'{user.first_name} Point of interest are: {update.message.text}')
 
+    global user_categories_choice
+    global categories_keyboard
+
+    # Checks that the selected category is valid
+    remaining_cat = SafeRefugeApiService.get_remaining_categories(user_categories_choice)
+    user_choice = user_categories_choice.values()
+
+    if user_answer not in [*remaining_cat, *user_choice]:
+        invalid_category_selected_msg(update)
+        return CHECK_INFO
+
+    user_categories_choice[update.message.text] = update.message.text
+    categories_keyboard = KeyboardService.get_categories_keyboard(list(user_categories_choice))
+    
+    # Checks if all categories are selected
+    if categories_keyboard == []:
+        all_categories_selected_msg(update)
+        return LOCATION
+
     update.message.reply_text(
-        'There is another point of interest are you looking for?',
+        'There is another category of interest are you looking for? ',
         reply_markup=ReplyKeyboardMarkup(
             yes_no_keyboard,
             one_time_keyboard=True,
@@ -61,97 +217,44 @@ def info(update: Update, context: CallbackContext) -> int:
             )
     )
 
-    return ADDITEMS
+    return ADD_CATEGORY
 
-
-def add_point_of_interest(update: Update, context: CallbackContext) -> int:
+def add_category(update: Update, context: CallbackContext) -> int:
     """
-    Recheck the user's points of interest.
+    Recheck the user's category of interest.
     """
     user = update.message.from_user
     user_answer = update.message.text
 
-    if user_answer == 'No' or user_answer == 'no':
-        categories_choice_len = len(user_categories_choice)
-        logger.info(f'User {user.first_name} interests in this {categories_choice_len} categories: {user_categories_choice.values()}')
-
-        update.message.reply_text(
-        'We need your location to provide the closest available assistance for your needs. If you see the prompt, please click "Allow" or alternatively you can press skip and manually enter your address',
-        reply_markup=ReplyKeyboardMarkup(
-                location_keyboard,
-                one_time_keyboard=True,
-                input_field_placholder="Please choose:",
-            )     
-        
-        )
-
+    if user_answer.lower() in ['No', 'no']:
+        ask_for_location(update, user)
         return LOCATION
-
-    elif user_answer == 'Yes' or user_answer == 'yes':
-        update.message.reply_text(
-            'OK, select another option.',
-            reply_markup=ReplyKeyboardMarkup(
-                categories_keyboard,
-                one_time_keyboard=True,
-                input_field_placeholder="Please choose:",
-            )
-        )
-
-        return INFO
-    
-    elif user_answer == '/cancel':
-        return cancel(update, context)
-
+        
+    elif user_answer.lower() in ['Yes', 'yes']:
+        ask_for_more_info(update)
+        return CHECK_INFO
+        
     else:
-        update.message.reply_text(
-        'Sorry, I did not understand your answer. There is another point of interest are you looking for? Please, choose Yes or No.',
-        reply_markup=ReplyKeyboardMarkup(
-                categories_keyboard,
-                one_time_keyboard=True,
-                input_field_placeholder="Please choose:",
-                resize_keyboard=True
-            )
-        )
-
-        return ADDITEMS
-
+        invalid_answer_msg(update, yes_no_keyboard, 'Please select Yes or No')
+        return ADD_CATEGORY
 
 def location(update: Update, context: CallbackContext) -> int:
     """Stores the location and looks for POIs (ONLY if user sent location)"""
     
     user = update.message.from_user
     user_location = update.message.location
-
-    # TODO: get the location automatically
-
-    
     logger.info(f'Location of { user.first_name}: {user_location.latitude} / {user_location.longitude}')
 
-    points = get_points_of_interest(chat_id=update.message.chat_id, skip=0, limit=20, latitude=user_location.latitude,
-        longitude=user_location.longitude, min_distance=0, max_distance=500000, categories=user_categories_choice.values(), organizations=None,
-        city=None, country=None, approved=None, active=None, author=None, admin=None, add_distance=True, fields="basic")
-
-    if points:
-        update.message.reply_text(f'Here are the points of interest near you:\n')
-        for name, location in points.items(): 
-            update.message.reply_text(f'{name}:\n')
-            update.message.reply_location(location=location)    
-
-        # TODO: Handle the end of the conversation - Yet not working!!!
-        return DONE
+    points = SafeRefugeApiService.get_points_of_interest(chat_id=update.message.chat_id, latitude=user_location.latitude, longitude=user_location.longitude, categories=user_categories_choice.values())
     
-    update.message.reply_text(
-        f'Sorry, I could not find any points of interest near you. Maybe you want to look for another points of interest?',
-        reply_markup=ReplyKeyboardMarkup(
-                yes_no_keyboard,
-                one_time_keyboard=True,
-                input_field_placeholder="Please choose:",
-                resize_keyboard=True
-            )
-        )
-
-    return ADDITEMS
-
+    if not points:   
+        cant_find_POI_msg(update)
+        return ADD_CATEGORY 
+        
+    # TODO: to return locations table too.
+    send_locations_to_user(update, points)
+    would_you_search_again_msg(update)
+    return DONE
 
 def skip_location(update: Update, context: CallbackContext) -> int:
     """Skips the location and asks for info about the user."""
@@ -159,71 +262,70 @@ def skip_location(update: Update, context: CallbackContext) -> int:
     logger.info(f'User {user.first_name} did not send a location.')
     
     update.message.reply_text(
-        'You seem a bit paranoid! At least, type in an address close to you.',
+        "Ok, please type in an address close to yours so I can give you the relevant points of interest, otherwise I won't be able to help you.",
          reply_markup=ReplyKeyboardRemove()
     )
 
     return GET_POINTS
 
 def get_points(update: Update, context: CallbackContext) -> int:
-    """Uses geolocation to turn the address into coordinates"""
+    """Uses geolocation to turn the address into coordinates"""    
     user = update.message.from_user
     user_address = update.message.text
-    logger.info(f'User {user.first_name} sent {user_address} as an address close to them.')
-
+    logger.info(f'User {user.first_name} sent {user_address} as an address close to them.')    
+    
     result = get_geocode(user_address)
 
     if result == []:
         update.message.reply_text(
-            f'Sorry, I could not recognise that address. Maybe retype the address?',
+            'Sorry, I could not recognise that address. Maybe retype the address?',
             reply_markup=ReplyKeyboardRemove()
-            )
-            
+        )
+
         return GET_POINTS
 
     else:
         update.message.reply_text(
             f'You have inputted {result[0]} as your address. Looking for points of interest...',
             reply_markup=ReplyKeyboardRemove()
-            )
+        )
 
         lat, lng = result[1]["lat"], result[1]["lng"]
-        points = get_points_of_interest(chat_id=update.message.chat_id, skip=0, limit=20, latitude=lat,
-            longitude=lng, min_distance=0, max_distance=500000, categories=user_categories_choice.values(), organizations=None,
-            city=None, country=None, approved=None, active=None, author=None, admin=None, add_distance=True, fields="basic")
-
-        if points:
-            update.message.reply_text(f'Here are the points of interest near you:\n')
-            for name, location in points.items(): 
-                update.message.reply_text(f'{name}:\n')
-                update.message.reply_location(location=location)    
-
-            # TODO: Handle the end of the conversation - Yet not working!!!
+        points = SafeRefugeApiService.get_points_of_interest(chat_id=update.message.chat_id, latitude=lat, longitude=lng, categories=user_categories_choice.values())
+        
+        if points:    
+            send_locations_to_user(update, points)
+            would_you_search_again_msg(update)
             return DONE
-    
-        update.message.reply_text(
-            f'Sorry, I could not find any points of interest near you. Maybe you want to look for another points of interest?',
-            reply_markup=ReplyKeyboardMarkup(
-                    yes_no_keyboard,
-                    one_time_keyboard=True,
-                    input_field_placeholder="Please choose:",
-                    resize_keyboard=True
-                )
-            )
 
-        return ADDITEMS
+        cant_find_POI_msg()
+        return ADD_CATEGORY
 
 def end_of_conversation(update: Update, context: CallbackContext):
     """Ends the conversation."""
-    logger.info(f'The user ends the conversation.')
+    user = update.message.from_user
+    user_answer = update.message.text
     
-    update.message.reply_text(
-        'I hope this information will be helpful for you. I will be here if you need me ☻',
-        reply_markup=ReplyKeyboardRemove()
-    )
+    if user_answer.lower() in ['No', 'no']:
+        update.message.reply_text(
+            'I hope this information will be helpful for you.\nsee you soon!',
+            reply_markup=ReplyKeyboardMarkup(
+                search_keyboard,
+                one_time_keyboard=True,
+                input_field_placeholder="For starting a new search, please click:",
+                resize_keyboard=True
+            )
+        )
+        
+        return ConversationHandler.END
 
-    return ConversationHandler.END
-
+    elif user_answer.lower() in ['Yes', 'yes']:
+        return search(update, context)
+    
+    else:
+        
+        invalid_answer_msg(update, search_keyboard, 'For starting a new search, please click /search.')
+        return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext) -> int:
     """Cancels and ends the conversation."""
@@ -231,25 +333,27 @@ def cancel(update: Update, context: CallbackContext) -> int:
     logger.info(f'User {user.first_name} canceled the conversation.')
     
     update.message.reply_text(
-        f'The command /nearby has been cancelled. Anything else I can do for you? Send /help for a list of commands.',
+        'The current search has been cancelled. Anything else I can do for you?\
+            \n\nSend /help for a list of commands, or /start to get more information.',
         reply_markup=ReplyKeyboardRemove()
     )
 
     return ConversationHandler.END
 
 
-def get_search_handler():
-    """Returns the handler for the nearby conversation."""
+def get_search_conv_handler() -> ConversationHandler:
+    """Returns the handler for the search conversation."""
 
     return ConversationHandler(
-        entry_points=[CommandHandler('start', nearby)],
+        entry_points=[CommandHandler('search', search)],
         states={
-            INFO: [MessageHandler(Filters.text, info)],
-            ADDITEMS: [MessageHandler(Filters.text, add_point_of_interest)],            
+            CHECK_INFO: [MessageHandler(Filters.text, check_info)],
+            ADD_CATEGORY: [MessageHandler(Filters.text, add_category)],            
             LOCATION: [
                 MessageHandler(Filters.location, location),
                 CommandHandler('skip', skip_location)
             ],
+            # TODO: adding edge cases - if users recant, allow them to send location again.
             GET_POINTS: [MessageHandler(Filters.text, get_points)],
             DONE: [MessageHandler(Filters.text, end_of_conversation)],
         },
